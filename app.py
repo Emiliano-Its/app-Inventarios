@@ -18,8 +18,22 @@ def obtenerConexion():
         database=os.getenv("DB_NAME")
     )
 
+def cerrarConexion(conexion, cursor):
+    try:
+        if cursor:
+            cursor.close()
+
+        if conexion:
+            conexion.close()
+    except Exception as er:
+        return(f"Error al cerrar conexion {er}")
+
+
 #Crea una instancia en Flask para que se puede ejecutar despues
 app = Flask(__name__)
+
+#Linea para hacer que las respues de los jsonify returnen en el  orden en que se agrego
+'app.json.sort_keys = False'
 
 #Decorador para definir que la funcion se ejecute cuando se solicute con metodo GET, con la ruta /productos
 @app.route('/productos', methods= ['GET'])
@@ -28,15 +42,15 @@ def obtener_productos():
         conexion= obtenerConexion()
         cursor= conexion.cursor(dictionary= True)
         cursor.execute(
-            'SELECT id, precio, nombre FROM productos'
+            'SELECT id, precio, nombre, cantidad FROM productos'
         )
+        #fethall sirve para extraer todos los resultados del cursor
         resultado= cursor.fetchall()
-        conexion.close()
-        cursor.close()
         return jsonify(resultado),200
     except Exception as er:
         return jsonify({'error':f'Hubo un error en la ejecucion {str(er)}'}),500
-    
+    finally:
+        cerrarConexion(conexion, cursor)
 
 @app.route('/productos', methods= ['POST'])
 def agregar_productos():
@@ -56,8 +70,6 @@ def agregar_productos():
             #Guarda los cambios realizados
             conexion.commit()
             nuevo_id= cursor.lastrowid
-            cursor.close()
-            conexion.close()
 
             return jsonify({"mensaje": "Producto agregado correctamente", 
                             "producto" : {
@@ -68,6 +80,9 @@ def agregar_productos():
             }}), 201
         except Exception as er:
             return jsonify({"mensaje": f"Ocurrio un error en el proceso {str(er)}"}) , 500
+        
+        finally:
+            cerrarConexion(conexion, cursor)
     else: 
         return jsonify({"mensaje" : "Los campos no fueron llenados correctamente"}), 400
             
@@ -80,8 +95,10 @@ def eliminar_producto(id):
         cursor= conexion.cursor(dictionary= True)
 
         cursor.execute("SELECT * FROM productos where id = %s ", (id,))
+        #fethone sirve para extraer solo un resultado de cursor
         producto= cursor.fetchone()
 
+        #comprueba si hay producto
         if not producto:
             cursor.close()
             conexion.close()
@@ -89,9 +106,6 @@ def eliminar_producto(id):
 
         cursor.execute('DELETE FROM productos WHERE id = %s', (id,))
         conexion.commit()
-
-        cursor.close()
-        conexion.close()
 
         return jsonify({"mensaje": 'Producto eliminado correctamente',
                         "producto elimando": {
@@ -102,9 +116,58 @@ def eliminar_producto(id):
                         }})
     except Exception as er:
         return jsonify({"mensaje": f'Ocurrio un error en el proceso {str(er)}'}), 500
+    
+    finally:
+            cerrarConexion(conexion, cursor)
 
+
+@app.route('/productos/<int:id>', methods= ['PUT'])
+def modificar_producto(id):
+    producto_modificado= request.get_json()
+    if 'nombre' in producto_modificado and 'precio' in producto_modificado and 'cantidad' in producto_modificado:
+        try:
+            conexion= obtenerConexion()
+            cursor= conexion.cursor(dictionary= True)
+
+            cursor.execute("SELECT * FROM productos where id = %s ", (id,))
+            producto_viejo= cursor.fetchone()
+
+            if not producto_viejo:
+                cursor.close()
+                conexion.close()
+                return jsonify({"mensaje": "el producto seleccionado no existe"}), 401
+            
+            consulta= '''UPDATE productos
+                        SET nombre= %s, precio = %s, cantidad= %s
+                        Where id= %s''' 
+    
+            valores= (producto_modificado['nombre'], producto_modificado['precio'], producto_modificado['cantidad'], id)
+            cursor.execute(consulta, valores)
+            conexion.commit()
+
+            return jsonify({"mensaje":'Producto modificado correctamente',
+                            'Producto nuevo': {
+                                'id' : id,
+                                'nombre' : producto_modificado["nombre"],
+                                'precio': producto_modificado["precio"],
+                                'cantidad': producto_modificado["cantidad"]
+                            }}),200
+            
+        except Exception as er:
+            return jsonify({"mensaje": f"Ocurrio un error en el proceso {str(er)}"}), 500
+        
+        finally:
+            cerrarConexion(conexion, cursor)
+    else:
+        return jsonify({"mensaje":"El producto no cumple con los campos necesarios para actualizarse"}), 400
     
     
+
+if __name__ == '__main__':
+    app.run(debug= True)
+
+
+
 
 
 '''#Decorador para definir que la funcion se ejecute cuando se solicute con metodo POST, con la ruta /productos
@@ -190,8 +253,3 @@ def modificar_productos(id):
     else:
         return jsonify({"error": "campos de nombre o precio no ingresados correctamente"}), 400
 '''
-
-
-
-if __name__ == '__main__':
-    app.run(debug= True)
