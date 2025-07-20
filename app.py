@@ -57,8 +57,14 @@ def agregar_productos():
     #recibe en formato json el nuevo producto
     nuevo_producto= request.get_json()
 
-    if "nombre" in nuevo_producto and "precio" in nuevo_producto and "cantidad" in nuevo_producto:
+    nombre= nuevo_producto.get('nombre')
+    precio= nuevo_producto.get('precio')
+    cantidad= nuevo_producto.get('cantidad')
+    if (nombre and precio and cantidad ):
+
         try:
+            precio= float(precio)
+            cantidad= int(cantidad)
             conexion= obtenerConexion()
             cursor= conexion.cursor()
             consulta= 'INSERT INTO productos (nombre, precio, cantidad) VALUES (%s, %s, %s)'
@@ -69,8 +75,10 @@ def agregar_productos():
 
             #Guarda los cambios realizados
             conexion.commit()
+            #Adquiere el ultimo id utilizado en la base de datos
             nuevo_id= cursor.lastrowid
-
+        
+    
             return jsonify({"mensaje": "Producto agregado correctamente", 
                             "producto" : {
                                 "id": nuevo_id,
@@ -78,9 +86,11 @@ def agregar_productos():
                                 "precio" : nuevo_producto["precio"],
                                 "cantidad" : nuevo_producto["cantidad"]
             }}), 201
+        except ValueError:
+            return jsonify({'mensaje':''})
         except Exception as er:
             return jsonify({"mensaje": f"Ocurrio un error en el proceso {str(er)}"}) , 500
-        
+             
         finally:
             cerrarConexion(conexion, cursor)
     else: 
